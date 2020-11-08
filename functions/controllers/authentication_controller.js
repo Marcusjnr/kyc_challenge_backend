@@ -4,7 +4,6 @@ const bcrypt = require('bcrypt');
 admin.initializeApp(functions.config().firebase);
 const db = admin.firestore();
 const { successResponse, errorResponse } = require('../utils/responses');
-const sesClient = require('../utils/ses-client');
 
 class AuthenticationController{
     static async signUpUser(req, res){
@@ -142,6 +141,39 @@ class AuthenticationController{
 
     }
 
+    static async verifyPassport(req, res){
+        try{
+            let docId;
+            const userRef = db.collection('users');
+            const snapshot = await userRef.where('email', '==', req.body.email).limit(1).get();
+
+            snapshot.forEach(doc =>{
+                docId = doc.id;
+            });
+
+            await db.collection("users").doc(docId).update({
+                "passport.approved": true
+            });
+            await sesClient.sendEmail(req.body.email, 'Account Upgraded', 'You have upgraded your account to level 2', req, res, '"shootfish.xyz" <noreply@bshop.shootfish.xyz>');
+
+            return successResponse(
+                true,
+                {
+                    userlevel: 'updated'
+                },
+                'Level Updated',
+                res)
+        }catch (e) {
+            return errorResponse(
+                false,
+                'Something went wrong',
+                500,
+                res
+
+            );
+        }
+    }
+
     static async updateLevel(req, res){
         try {
             let docId;
@@ -157,14 +189,19 @@ class AuthenticationController{
             });
 
             if(req.body.level === '2'){
-                await sesClient.sendEmail(req.body.email, 'Account Upgraded', 'You have upgraded your account to level 2', req, res, '"shootfish.xyz" <noreply@bshop.shootfish.xyz>');
+                await db.collection("users").doc(docId).update({
+                    passport:{
+                        documentName: req.body.imageurl,
+                        approved: false
+                    }
+                })
             }
             return successResponse(
                 true,
                 {
                     userlevel: 'updated'
                 },
-                'User Level updated',
+                'Level Update in progress',
                 res)
         }catch (e) {
             return errorResponse(
@@ -183,5 +220,6 @@ module.exports = {
   signUpUser: AuthenticationController.signUpUser,
     loginUser: AuthenticationController.loginUser,
     updateLevel: AuthenticationController.updateLevel,
-    validateEmail: AuthenticationController.validateEmail
+    validateEmail: AuthenticationController.validateEmail,
+    verifyPassport: AuthenticationController.verifyPassport
 };
